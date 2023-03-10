@@ -8,12 +8,9 @@
 #define TEMPERATURE_TYPE  CELSIUS
 /**********Select display temperature type**************/
 
-/**********Select display network IP type**************/
-#define ETH0_ADDRESS    0
-#define WLAN0_ADDRESS   1
-#define IPADDRESS_TYPE  ETH0_ADDRESS  // or WLAN0_ADDRESS for WiFi
-/**********Select display network IP type**************/
-
+/********** Which interface name to get IP address from **********/
+#define INTERFACENAME  "end0"
+/********** Which interface name to get IP address from **********/
 
 /************************Turn off the IP display. Can customize the display****************/
 #define IP_DISPLAY_OPEN     0
