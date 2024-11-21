@@ -1,16 +1,14 @@
-#ifndef  __RPIINFO_H
-#define  __RPIINFO_H
+#ifndef __RPIINFO_H
+#define __RPIINFO_H
 
 #include <stdint.h>
+#include "../rpiInfo/rpiInfo.h"
+
 /**********Select display temperature type**************/
 #define CELSIUS       0
 #define FAHRENHEIT    1
 #define TEMPERATURE_TYPE  CELSIUS
 /**********Select display temperature type**************/
-
-/********** Which interface name to get IP address from **********/
-#define INTERFACENAME  "end0"
-/********** Which interface name to get IP address from **********/
 
 /************************Turn off the IP display. Can customize the display****************/
 #define IP_DISPLAY_OPEN     0
@@ -20,11 +18,10 @@
 /************************Turn off the IP display. Can customize the display****************/
 
 char* get_ip_address(void);
-char* get_ip_address_new(void);
 void get_sd_memory(uint32_t *MemSize, uint32_t *freesize);
 void get_cpu_memory(float *Totalram, float *freeram);
 uint8_t get_temperature(void);
 uint8_t get_cpu_message(void);
 uint8_t get_hard_disk_memory(uint16_t *diskMemSize, uint16_t *useMemSize);
 
-#endif /*__RPIINFO_H*/
+#endif /* __RPIINFO_H */

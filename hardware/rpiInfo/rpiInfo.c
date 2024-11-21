@@ -1,148 +1,114 @@
 #include "rpiInfo.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/sysinfo.h>
 #include <sys/vfs.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <netinet/in.h>
-#include <net/if.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/ioctl.h>
-#include <linux/i2c.h>
-#include <linux/i2c-dev.h>
-#include <fcntl.h>
-#include "st7735.h"
 #include <stdlib.h>
+#include <stdint.h>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <linux/if_link.h>
+#include <net/if.h>  // Added this include
 
 /*
- * Get the IP address of the interface specified in `INTERFACENAME`
+ * Get the IP address of the default network interface
  */
-
-char *get_ip_address(void)
+char* get_ip_address(void)
 {
-  /* Default value to return */
-  char *buffer = "xxx.xxx.xxx.xxx";
+    struct ifaddrs *ifaddr, *ifa;
+    int family;
+    char *ip_address = NULL;
 
-  /*
-   * Attempt to retrieve the IP address of the
-   * interface defined in `INTERFACENAME`.
-   */
-  if (INTERFACENAME != NULL)
-  {
-    struct ifreq ifr;
-    int symbol = -1;
-
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    // I want to get an IPv4 IP address
-    ifr.ifr_addr.sa_family = AF_INET;
-    // I want the IP address attached to `INTERFACENAME`
-    strncpy(ifr.ifr_name, INTERFACENAME, IFNAMSIZ - 1);
-    symbol = ioctl(fd, SIOCGIFADDR, &ifr);
-    close(fd);
-
-    // If there was no issue from ioctl then extract the IP.
-    if (symbol == 0)
-    {
-      buffer = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return strdup("xxx.xxx.xxx.xxx");
     }
-  }
 
-  return buffer;
-}
+    // Iterate over the linked list of interfaces
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
 
-char* get_ip_address_new(void)
-{
-    int fd;
-    struct ifreq ifr;
-    int symbol=0;
+        family = ifa->ifa_addr->sa_family;
 
-    fd = socket(AF_INET, SOCK_DGRAM, 0);
-    /* I want to get an IPv4 IP address */
-    ifr.ifr_addr.sa_family = AF_INET;
-    /* I want IP address attached to "eth0" */
-    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
-    symbol=ioctl(fd, SIOCGIFADDR, &ifr);
-    close(fd);
-    if(symbol==0)
-    {
-      return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+        // Look for IPv4 addresses
+        if (family == AF_INET) {
+            // Exclude loopback interface
+            if (strcmp(ifa->ifa_name, "lo") == 0)
+                continue;
+
+            // Check if interface is up
+            if (!(ifa->ifa_flags & IFF_UP))
+                continue;
+
+            // Use this IP address
+            ip_address = strdup(inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr));
+            break;
+        }
     }
+
+    freeifaddrs(ifaddr);
+
+    if (ip_address != NULL)
+        return ip_address;
     else
-    {
-      fd = socket(AF_INET, SOCK_DGRAM, 0);
-      /* I want to get an IPv4 IP address */
-      ifr.ifr_addr.sa_family = AF_INET;
-      /* I want IP address attached to "wlan0" */
-      strncpy(ifr.ifr_name, "wlan0", IFNAMSIZ-1);
-      symbol=ioctl(fd, SIOCGIFADDR, &ifr);
-      close(fd);    
-      if(symbol==0)
-      {
-        return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);   
-      }
-      else
-      {
-        char* buffer="xxx.xxx.xxx.xxx";
-        return buffer;
-      }
-    }
+        return strdup("xxx.xxx.xxx.xxx");
 }
-
-
 
 /*
- * get ram memory
+ * get RAM memory
  */
 void get_cpu_memory(float *Totalram, float *freeram)
 {
-  struct sysinfo s_info;
+    struct sysinfo s_info;
+    unsigned int value = 0;
+    char buffer[100] = {0};
+    char famer[100] = {0};
 
-  unsigned int value = 0;
-  unsigned char buffer[100] = {0};
-  unsigned char famer[100] = {0};
-  if (sysinfo(&s_info) == 0) // Get memory information
-  {
-    FILE *fp = fopen("/proc/meminfo", "r");
-    if (fp == NULL)
+    if (sysinfo(&s_info) == 0) // Get memory information
     {
-      return;
+        FILE *fp = fopen("/proc/meminfo", "r");
+        if (fp == NULL)
+        {
+            return;
+        }
+        while (fgets(buffer, sizeof(buffer), fp))
+        {
+            if (sscanf(buffer, "%s%u", famer, &value) != 2)
+            {
+                continue;
+            }
+            if (strcmp(famer, "MemTotal:") == 0)
+            {
+                *Totalram = value / 1024.0 / 1024.0;
+            }
+            else if (strcmp(famer, "MemAvailable:") == 0)
+            {
+                *freeram = value / 1024.0 / 1024.0;
+            }
+        }
+        fclose(fp);
     }
-    while (fgets(buffer, sizeof(buffer), fp))
-    {
-      if (sscanf(buffer, "%s%u", famer, &value) != 2)
-      {
-        continue;
-      }
-      if (strcmp(famer, "MemTotal:") == 0)
-      {
-        *Totalram = value / 1000.0 / 1000.0;
-      }
-      else if (strcmp(famer, "MemAvailable:") == 0)
-      {
-        *freeram = value / 1000.0 / 1000.0;
-      }
-    }
-    fclose(fp);
-  }
 }
 
 /*
- * get sd memory
+ * get SD memory
  */
 void get_sd_memory(uint32_t *MemSize, uint32_t *freesize)
 {
-  struct statfs diskInfo;
-  statfs("/", &diskInfo);
-  unsigned long long blocksize = diskInfo.f_bsize;              // The number of bytes per block
-  unsigned long long totalsize = blocksize * diskInfo.f_blocks; // Total number of bytes
-  *MemSize = (unsigned int)(totalsize >> 30);
-
-  unsigned long long size = blocksize * diskInfo.f_bfree; // Now let's figure out how much space we have left
-  *freesize = size >> 30;
-  *freesize = *MemSize - *freesize;
+    struct statfs diskInfo;
+    statfs("/", &diskInfo);
+    unsigned long long blocksize = diskInfo.f_bsize;              // The number of bytes per block
+    unsigned long long totalsize = blocksize * diskInfo.f_blocks; // Total number of bytes
+    *MemSize = (unsigned int)(totalsize >> 30);
+    unsigned long long size = blocksize * diskInfo.f_bfree; // Now let's figure out how much space we have left
+    *freesize = size >> 30;
+    *freesize = *MemSize - *freesize;
 }
 
 /*
@@ -150,58 +116,69 @@ void get_sd_memory(uint32_t *MemSize, uint32_t *freesize)
  */
 uint8_t get_hard_disk_memory(uint16_t *diskMemSize, uint16_t *useMemSize)
 {
-  *diskMemSize = 0;
-  *useMemSize = 0;
-  uint8_t diskMembuff[10] = {0};
-  uint8_t useMembuff[10] = {0};
-  FILE *fd = NULL;
-  fd=popen("df -l / | grep /dev/sda | awk '{printf \"%s\", $(2)}'","r");
-  fgets(diskMembuff, sizeof(diskMembuff), fd);
-  fclose(fd);
-
-  fd=popen("df -l / | grep /dev/sda | awk '{printf \"%s\", $(3)}'","r"); 
-  fgets(useMembuff, sizeof(useMembuff), fd);
-  fclose(fd);
-
-  *diskMemSize = atoi(diskMembuff) / 1024 / 1024;
-  *useMemSize = atoi(useMembuff) / 1024 / 1024;
+    *diskMemSize = 0;
+    *useMemSize = 0;
+    char diskMembuff[20] = {0};
+    char useMembuff[20] = {0};
+    FILE *fd = NULL;
+    fd = popen("df -l / | tail -1 | awk '{printf \"%s\", $(2)}'", "r");
+    fgets(diskMembuff, sizeof(diskMembuff), fd);
+    pclose(fd);
+    fd = popen("df -l / | tail -1 | awk '{printf \"%s\", $(3)}'", "r"); 
+    fgets(useMembuff, sizeof(useMembuff), fd);
+    pclose(fd);
+    *diskMemSize = atoi(diskMembuff) / 1024;
+    *useMemSize = atoi(useMembuff) / 1024;
+    return 0;
 }
 
 /*
  * get temperature
  */
-
 uint8_t get_temperature(void)
 {
-  FILE *fd;
-  unsigned int temp;
-  char buff[10] = {0};
-  fd = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-  fgets(buff, sizeof(buff), fd);
-  sscanf(buff, "%d", &temp);
-  fclose(fd);
-  return TEMPERATURE_TYPE == FAHRENHEIT ? temp / 1000 * 1.8 + 32 : temp / 1000;
+    FILE *fd;
+    unsigned int temp;
+    char buff[10] = {0};
+    fd = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
+    if (fd == NULL)
+    {
+        perror("Failed to read temperature");
+        return 0;
+    }
+    fgets(buff, sizeof(buff), fd);
+    sscanf(buff, "%d", &temp);
+    fclose(fd);
+    return TEMPERATURE_TYPE == FAHRENHEIT ? temp / 1000 * 1.8 + 32 : temp / 1000;
 }
 
 /*
- * Get cpu usage
+ * Get CPU usage
  */
 uint8_t get_cpu_message(void)
 {
-  FILE *fp;
-  uint8_t usCpuBuff[5] = {0};
-  uint8_t syCpubuff[5] = {0};
-  int usCpu = 0;
-  int syCpu = 0;
-
-  fp = popen("top -bn1 | grep %Cpu | awk '{printf \"%.2f\", $(2)}'", "r"); // Gets the load on the CPU
-  fgets(usCpuBuff, sizeof(usCpuBuff), fp);                                 // Read the user CPU load
-  pclose(fp);
-
-  fp = popen("top -bn1 | grep %Cpu | awk '{printf \"%.2f\", $(4)}'", "r"); // Gets the load on the CPU
-  fgets(syCpubuff, sizeof(syCpubuff), fp);                                 // Read the system CPU load
-  pclose(fp);
-  usCpu = atoi(usCpuBuff);
-  syCpu = atoi(syCpubuff);
-  return usCpu + syCpu;
+    FILE *fp;
+    char usCpuBuff[16] = {0};
+    char syCpuBuff[16] = {0};
+    int usCpu = 0;
+    int syCpu = 0;
+    fp = popen("top -bn1 | grep '%Cpu' | awk '{printf \"%.0f\", $(2)}'", "r"); // Gets the user CPU load
+    if (fp == NULL)
+    {
+        perror("Failed to get user CPU usage");
+        return 0;
+    }
+    fgets(usCpuBuff, sizeof(usCpuBuff), fp);
+    pclose(fp);
+    fp = popen("top -bn1 | grep '%Cpu' | awk '{printf \"%.0f\", $(4)}'", "r"); // Gets the system CPU load
+    if (fp == NULL)
+    {
+        perror("Failed to get system CPU usage");
+        return 0;
+    }
+    fgets(syCpuBuff, sizeof(syCpuBuff), fp);
+    pclose(fp);
+    usCpu = atoi(usCpuBuff);
+    syCpu = atoi(syCpuBuff);
+    return usCpu + syCpu;
 }
