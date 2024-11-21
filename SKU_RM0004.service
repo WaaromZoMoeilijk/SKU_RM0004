@@ -1,0 +1,8 @@
+[Unit]
+Description=UCTRONICS RM4000 Display.
+
+[Service]
+ExecStart=/opt/UCTRONICS/SKU_RM0004/display
+
+[Install]
+WantedBy=multi-user.target
